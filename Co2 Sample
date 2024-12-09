@@ -1,97 +1,76 @@
-python3 ~/Raspberry-Pi-sample-code/uart.py
-
-
-  GNU nano 7.2             /home/atlasco2/Raspberry-Pi-sample-code/uart.py
 #!/usr/bin/python
 
 import serial
 import sys
 import time
-import string
 from serial import SerialException
+from tkinter import Tk, Label
 
 def read_line():
-        """
-        taken from the ftdi library and modified to
-        use the ezo line separator "\r"
-        """
-        lsl = len(b'\r')
-        line_buffer = []
-        while True:
-                next_char = ser.read(1)
-                if next_char == b'':
-                        break
-                line_buffer.append(next_char)
-                if (len(line_buffer) >= lsl and
-                                line_buffer[-lsl:] == [b'\r']):
-                        break
-        return b''.join(line_buffer)
+    """
+    Taken from the ftdi library and modified to
+    use the EZO line separator "\r"
+    """
+    lsl = len(b'\r')
+    line_buffer = []
+    while True:
+        next_char = ser.read(1)
+        if next_char == b'':
+            break
+        line_buffer.append(next_char)
+        if (len(line_buffer) >= lsl and
+                line_buffer[-lsl:] == [b'\r']):
+            break
+    return b''.join(line_buffer)
 
 def read_lines():
-        """
-        also taken from ftdi lib to work with modified readline function
-        """
-        lines = []
-        try:
-                while True:
-                        line = read_line()
-                        if not line:
-                                break
-                                ser.flush_input()
-                        lines.append(line)
-                return lines
+    """
+    Also taken from ftdi lib to work with the modified readline function
+    """
+    lines = []
+    try:
+        while True:
+            line = read_line()
+            if not line:
+                break
+                ser.flush_input()
+            lines.append(line)
+        return lines
 
-        except SerialException as e:
-                print( "Error, ", e)
-                return None
+    except SerialException as e:
+        print("Error, ", e)
+        return None
 
 def send_cmd(cmd):
-        """
-        Send command to the Atlas Sensor.
-        Before sending, add Carriage Return at the end of the command.
-        :param cmd:
-        :return:
-        """
-        buf = cmd + "\r"        # add carriage return
+    """
+    Send command to the Atlas Sensor.
+    Before sending, add Carriage Return at the end of the command.
+    """
+    buf = cmd + "\r"  # Add carriage return
+    try:
+        ser.write(buf.encode('utf-8'))
+        return True
+    except SerialException as e:
+        print("Error, ", e)
+        return None
+
+def update_display():
+    """
+    Function to read data from the sensor and update the GUI.
+    """
+    send_cmd("R")  # Send read command
+    print("DEBUG: Sent command 'R' to sensor.")  # Log command sent
+    time.sleep(1)  # Wait for sensor response
+    lines = read_lines()
+    if lines:
         try:
-                ser.write(buf.encode('utf-8'))
-                return True
-        except SerialException as e:
-                print ("Error, ", e)
-                return None
-
-if __name__ == "__main__":
-
-        real_raw_input = vars(__builtins__).get('raw_input', input) # used to find the correct >
-
-        print("\nWelcome to the Atlas Scientific Raspberry Pi UART example.\n")
-        print("    Any commands entered are passed to the board via UART except:")
-        print("    Poll,xx.x command continuously polls the board every xx.x seconds")
-        print("    Pressing ctrl-c will stop the polling\n")
-        print("    Press enter to receive all data in buffer (for continuous mode) \n")
-
-        # to get a list of ports use the command:
-        # python -m serial.tools.list_ports
-        # in the terminal
-        usbport = '/dev/ttyAMA5' # change to match your pi's setup
-
-        print( "Opening serial port now...")
-
-        try:
-                ser = serial.Serial(usbport, 9600, timeout=0)
-        except serial.SerialException as e:
-                print( "Error, ", e)
-                sys.exit(0)
-
-        while True:
-                input_val = real_raw_input("Enter command: ")
-
-                # continuous polling command automatically polls the board
-                if input_val.upper().startswith("POLL"):
-                        delaytime = float(input_val.split(',')[1])
-
-                        send_cmd("C,0") # turn off continuous mode
-                        #clear all previous data
-                        time.sleep(1)
-                        ser.flush()
-
+            # Extract the CO2 value (first element of the response)
+            raw_value = lines[0].decode('utf-8').strip()  # Decode and clean up
+            print(f"DEBUG: Raw response from sensor: {raw_value}")  # Log raw data
+            label.config(text=f"CO2 Level: {raw_value}")  # Update GUI
+        except Exception as e:
+            print(f"DEBUG: Error parsing response: {e}")
+            label.config(text="Error parsing response")
+    else:
+        print("DEBUG: No data received from sensor.")  # Log no data
+        label.config(text="No CO2 Data")  # Show message on GUI
