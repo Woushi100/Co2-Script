@@ -1,76 +1,127 @@
 #!/usr/bin/python
-
+import board
+import busio
+from adafruit_mcp4725 import MCP4725
 import serial
 import sys
 import time
 from serial import SerialException
-from tkinter import Tk, Label
+from tkinter import Tk, Label, Frame, BOTH
 
 def read_line():
-    """
-    Taken from the ftdi library and modified to
-    use the EZO line separator "\r"
-    """
-    lsl = len(b'\r')
-    line_buffer = []
-    while True:
-        next_char = ser.read(1)
-        if next_char == b'':
-            break
-        line_buffer.append(next_char)
-        if (len(line_buffer) >= lsl and
-                line_buffer[-lsl:] == [b'\r']):
-            break
-    return b''.join(line_buffer)
+"""
+Taken from the ftdi library and modified to
+use the EZO line separator "\r"
+"""
+lsl = len(b'\r')
+line_buffer = []
+while True:
+next_char = ser.read(1)
+if next_char == b'':
+break
+line_buffer.append(next_char)
+if (len(line_buffer) >= lsl and
+line_buffer[-lsl:] == [b'\r']):
+break
+return b''.join(line_buffer)
 
 def read_lines():
-    """
-    Also taken from ftdi lib to work with the modified readline function
-    """
-    lines = []
-    try:
-        while True:
-            line = read_line()
-            if not line:
-                break
-                ser.flush_input()
-            lines.append(line)
-        return lines
+"""
+Also taken from ftdi lib to work with the modified readline function
+"""
+lines = []
+try:
+while True:
+line = read_line()
+if not line:
+break
+ser.flushInput()
+lines.append(line)
+return lines
 
-    except SerialException as e:
-        print("Error, ", e)
-        return None
+except SerialException as e:
+print("Error, ", e)
+return None
 
 def send_cmd(cmd):
-    """
-    Send command to the Atlas Sensor.
-    Before sending, add Carriage Return at the end of the command.
-    """
-    buf = cmd + "\r"  # Add carriage return
-    try:
-        ser.write(buf.encode('utf-8'))
-        return True
-    except SerialException as e:
-        print("Error, ", e)
-        return None
+"""
+Send command to the Atlas Sensor.
+Before sending, add Carriage Return at the end of the command.
+"""
+buf = cmd + "\r" # Add carriage return
+try:
+ser.write(buf.encode('utf-8'))
+return True
+except SerialException as e:
+print("Error, ", e)
+return None
 
 def update_display():
-    """
-    Function to read data from the sensor and update the GUI.
-    """
-    send_cmd("R")  # Send read command
-    print("DEBUG: Sent command 'R' to sensor.")  # Log command sent
-    time.sleep(1)  # Wait for sensor response
-    lines = read_lines()
-    if lines:
-        try:
-            # Extract the CO2 value (first element of the response)
-            raw_value = lines[0].decode('utf-8').strip()  # Decode and clean up
-            print(f"DEBUG: Raw response from sensor: {raw_value}")  # Log raw data
-            label.config(text=f"CO2 Level: {raw_value}")  # Update GUI
-        except Exception as e:
-            print(f"DEBUG: Error parsing response: {e}")
-            label.config(text="Error parsing response")
-    else:
-        print("DEBUG: No data received from sensor.")  # Log no data
-        label.config(text="No CO2 Data")  # Show message on GUI
+"""
+Function to read data from the sensor and update the GUI.
+"""
+send_cmd("R") # Send read command
+print("DEBUG: Sent command 'R' to sensor.") # Log command sent
+time.sleep(1) # Wait for sensor response
+lines = read_lines()
+if lines:
+try:
+# Extract the CO2 value (first element of the response)
+raw_value = lines[0].decode('utf-8').strip() # Decode and clean up
+print(f"DEBUG: Raw response from sensor: {raw_value}") # Log raw data
+
+# Save to file
+with open("co2_data.csv", "a") as file:
+timestamp = time.strftime("%Y-%m-%d %H:%M:%S") # Current time
+file.write(f"{timestamp},{raw_value}\n")
+
+# Update GUI
+co2_label.config(text=f"CO2: {raw_value}")
+except Exception as e:
+print(f"DEBUG: Error parsing response: {e}")
+co2_label.config(text="Error parsing response")
+else:
+print("DEBUG: No data received from sensor.") # Log no data
+co2_label.config(text="No CO2 Data") # Show message on GUI
+
+root.after(2000, update_display) # Repeat every 2 seconds
+
+if __name__ == "__main__":
+print("\nWelcome to the CO2 Sensor Display Script.\n")
+
+usbport = '/dev/ttyAMA5' # Adjust to match your setup
+
+print("Opening serial port now...")
+
+try:
+ser = serial.Serial(usbport, 9600, timeout=1)
+except serial.SerialException as e:
+print("Error, ", e)
+sys.exit(0)
+
+# Initialize the GUI
+root = Tk()
+root.title("CO2 Sensor Readout")
+root.geometry("800x400") # Adjust the size as needed
+root.configure(bg="black") # Set the entire window background to black
+
+# Add the black background Frame
+background_frame = Frame(root, bg="black", width=800, height=400) # Adjust width and height
+background_frame.pack(expand=True, fill=BOTH)
+
+# Create a label for "CO2"
+co2_label = Label(background_frame, text="CO2:", font=("Karate", 100), fg="blue", bg="black")
+co2_label.place(relx=0.5, rely=0.5, anchor="center") # Center the label
+
+# Start the GUI loop
+update_display()
+root.mainloop()
+
+# Create I2C bus
+i2c = busio.I2C(board.SCL, board.SDA)
+
+# Create MCP4725 object with explicit address
+dac = MCP4725(i2c, address=0x60)
+
+# Set DAC value (example: mid-range output)
+dac.raw_value = 2048 # Midpoint (for 5V input, this gives 2.5V output)
